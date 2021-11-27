@@ -11,8 +11,10 @@ AWS IoT GreenGrass core
 This custom component
 
 ## Configuration
+```
 alexa_gateway:
   url: https://api.amazonalexa.com/v3/events
   auth_url: https://api.amazon.com/auth/o2/token
   client_id: !secret ALEXA_CLIENT_ID
   client_secret: !secret  ALEXA_CLIENT_SECRET
+```
