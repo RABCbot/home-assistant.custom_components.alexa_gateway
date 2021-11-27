@@ -18,3 +18,7 @@ alexa_gateway:
   client_id: !secret ALEXA_CLIENT_ID
   client_secret: !secret  ALEXA_CLIENT_SECRET
 ```
+
+## License
+alexa_response.py
+Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved
