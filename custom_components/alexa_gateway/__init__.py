@@ -16,8 +16,8 @@ CONF_AUTH_URL = "auth_url"
 DEFAULT_TOKEN_CACHE = "/share/.alexa-gateway.token"
 _LOGGER = logging.getLogger(__name__)
 
-ATTR_MANUFACTURER = "Green Olive Smart Home"
-ATTR_DESCRIPTION = "Home-Assistant Device"
+ATTR_MANUFACTURER = "GreenOlive"
+ATTR_DESCRIPTION = "GreenOlive Device"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -25,14 +25,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def report_state(call: ServiceCall) -> None:
         url = config[COMPONENT_DOMAIN].get(CONF_AUTH_URL)
         token = await get_token(hass,
-                                config[COMPONENT_DOMAIN].get(
-                                    CONF_AUTH_URL),
+                                url,
                                 config[COMPONENT_DOMAIN].get(
                                     CONF_CLIENT_ID),
                                 config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
         entity_id = call.data.get(CONF_ENTITY_ID)
-        new_state = call.data.get(CONF_STATE)
-        await hass.async_add_executor_job(post_gateway, url, token, entity_id, new_state)
+        state = hass.states.get(entity_id)
+        url = config[COMPONENT_DOMAIN].get(CONF_URL)
+        await hass.async_add_executor_job(post_gateway, url, token, entity_id, state.state)
 
     hass.services.async_register(COMPONENT_DOMAIN,
                                  "report_state",
@@ -40,7 +40,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     @callback
     async def process_request(call: ServiceCall) -> None:
-        _LOGGER.debug("Alexa request: %s", call.data)
+        _LOGGER.debug("Request received: %s", call.data)
         name = call.data["directive"]["header"]["name"]
         namespace = call.data["directive"]["header"]["namespace"]
 
@@ -62,22 +62,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                                     config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
             response = await discovery_handler(hass, call.data)
             response["event"]["payload"]["scope"]["token"] = token
-            _LOGGER.debug(response)
+            _LOGGER.debug("Response posted: %s", response)
             await hass.async_add_executor_job(post_gateway,
                                               config[COMPONENT_DOMAIN].get(
                                                   CONF_URL),
                                               token,
                                               response)
 
-    #  elif name == "ReportState":
-    #    # Call home-assistant
-    #    response = get_status(request)
-    #    # Get auth token and send response to alexa gateway
-    #    token = get_token()
-    #    response["event"]["endpoint"]["scope"]["token"] = token
-    #    logger.info("Token retrieved, sending change state response back to Alexa gateway...")
-    #    logger.info(json.dumps(response))
-    #    send_event(token, response)
+        elif name == "ReportState":
+            token = await get_token(hass,
+                                    config[COMPONENT_DOMAIN].get(
+                                        CONF_AUTH_URL),
+                                    config[COMPONENT_DOMAIN].get(
+                                        CONF_CLIENT_ID),
+                                    config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
+            response = await report_handler(hass, call.data)
+            response["event"]["endpoint"]["scope"]["token"] = token
+            _LOGGER.debug("Response posted: %s", response)
+            await hass.async_add_executor_job(post_gateway,
+                                              config[COMPONENT_DOMAIN].get(
+                                                  CONF_URL),
+                                              token,
+                                              response)
 
         else:
             token = await get_token(hass,
@@ -88,7 +94,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                                     config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
             response = await service_handler(hass, call.data)
             response["event"]["endpoint"]["scope"]["token"] = token
-            _LOGGER.debug(response)
+            _LOGGER.debug("Response posted: %s", response)
             await hass.async_add_executor_job(post_gateway,
                                               config[COMPONENT_DOMAIN].get(
                                                   CONF_URL),
@@ -112,12 +118,12 @@ async def discovery_handler(hass, request):
     capability_switch = adr.create_payload_endpoint_capability(
         interface="Alexa.PowerController",
         supported=[{"name": "powerState"}],
-        retrievable=False,
+        retrievable=True,
         proactively_reported=True)
     capability_dimmer = adr.create_payload_endpoint_capability(
         interface="Alexa.BrightnessController",
         supported=[{"name": "brightness"}],
-        retrievable=False,
+        retrievable=True,
         proactively_reported=True)
     capability_thermostat = adr.create_payload_endpoint_capability(
         interface="Alexa.ThermostatController",
@@ -134,7 +140,7 @@ async def discovery_handler(hass, request):
         supported=[{"name": "temperature"}])
     capability_contact = adr.create_payload_endpoint_capability(
         interface="Alexa.ContactSensor",
-        retrievable=False,
+        retrievable=True,
         proactively_reported=True,
         supported=[{"name": "detectionState"}])
 
@@ -200,13 +206,13 @@ async def service_handler(hass, request):
 
     if namespace == "Alexa.PowerController":
         property_name = "powerState"
+        payload = {"entity_id": entity_id}
         if name == "TurnOff":
             service = "turn_off"
             property_value = "OFF"
         else:
             service = "turn_on"
             property_value = "ON"
-            payload = {"entity_id": entity_id}
 
     if namespace == "Alexa.BrightnessController":
         property_name = "brightness"
@@ -230,13 +236,47 @@ async def service_handler(hass, request):
     # TO-DO: Retrieve HASS status and send to Alexa gateway
 
     # Return an Alexa reponse
-    alexa_response = AlexaResponse(correlation_token=correlation_token,
-                                   scope_token=scope_token,
-                                   endpoint_id=entity_id)
-    alexa_response.add_context_property(namespace=namespace,
-                                        name=property_name,
-                                        value=property_value)
-    return alexa_response.get()
+    ar = AlexaResponse(correlation_token=correlation_token,
+                       scope_token=scope_token,
+                       endpoint_id=entity_id)
+    ar.add_context_property(namespace=namespace,
+                            name=property_name,
+                            value=property_value)
+    return ar.get()
+
+
+async def report_handler(hass, request):
+    # Extract Alexa request values and map to Home-Assistant
+    correlation_token = request["directive"]["header"]["correlationToken"]
+    scope_token = request["directive"]["endpoint"]["scope"]["token"]
+    entity_id = request["directive"]["endpoint"]["endpointId"]
+    domain = entity_id.split(".")[0]
+
+    # Prepare Alexa reponse
+    ar = AlexaResponse(name="StateReport",
+                       correlation_token=correlation_token,
+                       scope_token=scope_token,
+                       endpoint_id=entity_id)
+
+    # Retrieve HASS state
+    state = hass.states.get(entity_id)
+
+    if domain in ["sensor"]:
+        if state.state.lower() == "open" or state.state.lower() == "on":
+            property_value = "DETECTED"
+        else:
+            property_value = "NOT_DETECTED"
+        ar.add_context_property(namespace="Alexa.ContactSensor",
+                                name="detectionState",
+                                value=property_value)
+
+    if domain in ["light", "switch"]:
+        property_value = state.state.upper()
+        ar.add_context_property(namespace="Alexa.PowerController",
+                                name="powerState",
+                                value=property_value)
+
+    return ar.get()
 
 
 def post_gateway(url, token, payload):
@@ -245,7 +285,7 @@ def post_gateway(url, token, payload):
                    "Content-Type": "application/json;charset=UTF-8"}
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        _LOGGER.info("Alexa async message post sent, code %s %s",
+        _LOGGER.debug("Alexa Gateway post response: %s %s",
                      str(response.status_code), response.text)
     except Exception as err:
         _LOGGER.error(
