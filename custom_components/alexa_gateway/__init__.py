@@ -13,34 +13,45 @@ from .alexa_response import AlexaResponse
 
 COMPONENT_DOMAIN = "alexa_gateway"
 CONF_AUTH_URL = "auth_url"
+CONF_COUNTER = "counter"
 DEFAULT_TOKEN_CACHE = "/share/.alexa-gateway.token"
 _LOGGER = logging.getLogger(__name__)
 
 ATTR_MANUFACTURER = "GreenOlive"
 ATTR_DESCRIPTION = "GreenOlive Device"
+ATTR_ALEXA_INTERFACE = "alexa_interface"
+ATTR_ALEXA_DISPLAY = "alexa_display"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     @callback
-    async def report_state(call: ServiceCall) -> None:
+    async def report_change(call: ServiceCall) -> None:
         url = config[COMPONENT_DOMAIN].get(CONF_AUTH_URL)
         token = await get_token(hass,
                                 url,
                                 config[COMPONENT_DOMAIN].get(
                                     CONF_CLIENT_ID),
                                 config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
-        entity_id = call.data.get(CONF_ENTITY_ID)
-        state = hass.states.get(entity_id)
-        url = config[COMPONENT_DOMAIN].get(CONF_URL)
-        await hass.async_add_executor_job(post_gateway, url, token, entity_id, state.state)
+        response = await change_handler(hass, call.data.get(CONF_ENTITY_ID))
+        response["event"]["endpoint"]["scope"]["token"] = token
+        _LOGGER.debug("Response posted: %s", response)
+        await hass.async_add_executor_job(post_gateway,
+                                          config[COMPONENT_DOMAIN].get(
+                                              CONF_URL),
+                                          token,
+                                          response)
 
     hass.services.async_register(COMPONENT_DOMAIN,
-                                 "report_state",
-                                 report_state)
+                                 "report_change",
+                                 report_change)
 
     @callback
     async def process_request(call: ServiceCall) -> None:
         _LOGGER.debug("Request received: %s", call.data)
+        entity_id = config[COMPONENT_DOMAIN].get(CONF_COUNTER)
+        _LOGGER.debug("Incrementing counter: %s", entity_id)
+        await hass.services.async_call("counter", "increment", {"entity_id": entity_id})
+
         name = call.data["directive"]["header"]["name"]
         namespace = call.data["directive"]["header"]["namespace"]
 
@@ -63,9 +74,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             response = await discovery_handler(hass, call.data)
             response["event"]["payload"]["scope"]["token"] = token
             _LOGGER.debug("Response posted: %s", response)
+            url = config[COMPONENT_DOMAIN].get(CONF_URL)
             await hass.async_add_executor_job(post_gateway,
-                                              config[COMPONENT_DOMAIN].get(
-                                                  CONF_URL),
+                                              url,
                                               token,
                                               response)
 
@@ -108,91 +119,153 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def get_supportedproperty(interface):
+    if interface == "Alexa.ContactSensor":
+        return [{"name": "detectionState"}]
+
+    elif interface == "Alexa.MotionSensor":
+        return [{"name": "detectionState"}]
+
+    elif interface == "Alexa.TemperatureSensor":
+        return [{"name": "temperature"}]
+
+    elif interface == "Alexa.ThermostatController":
+        return [{"name": "lowerSetpoint"},
+                {"name": "upperSetpoint"},
+                {"name": "thermostatMode"}]
+
+    elif interface == "Alexa.PowerController":
+        return [{"name": "powerState"}]
+
+    elif interface == "Alexa.BrightnessController":
+        return [{"name": "brightness"}]
+
+    elif interface == "Alexa.DoorbellEventSource":
+        return None
+
+    else:
+        return [{"name": "detectionState"}]
+
+
+def get_interface(domain, attributes):
+    interface = "None"
+    if domain in ["light"]:
+        # TO-DO: what to do with dual capabilities, like light thathave brighness and power???
+        # interface = "Alexa.BrightnessController"
+        interface = "Alexa.PowerController"
+
+    if domain in ["switch", "input_boolean"]:
+        interface = "Alexa.PowerController"
+
+    if domain in ["script"]:
+        interface = "Alexa.PowerController"
+
+    if domain in ["climate"]:
+        interface = "Alexa.ThermostatController"
+
+    if domain in ["sensor", "binary_sensor"]:
+        interface = "Alexa.ContactSensor"
+
+    # Overwrite using HASS attribute
+    interface = attributes.get(ATTR_ALEXA_INTERFACE, interface)
+    return interface
+
+
+def get_capabilities(alexa_response, attributes, domain):
+    capability = alexa_response.create_payload_endpoint_capability()
+    capabilities = [capability]
+
+    interface = get_interface(domain, attributes)
+
+    if domain in ["light"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface="Alexa.BrightnessController",
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    if domain in ["switch", "input_boolean"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    if domain in ["script"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            retrievable=False,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    if domain in ["climate"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            supported_modes=["HEAT", "COOL", "AUTO", "OFF"],
+            retrievable=False,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    if domain in ["sensor", "binary_sensor"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    # Fix doorbell event
+    if interface == "Alexa.DoorbellEventSource":
+        capabilities.pop(0)
+        capabilities[0]["proactivelyReported"] = True
+
+    return capabilities, interface
+
+
+def get_display(domain, attributes):
+    if domain == "light":
+        default = "LIGHT"
+    else:
+        default = "OTHER"
+
+    return attributes.get(ATTR_ALEXA_DISPLAY, default)
+
+
 async def discovery_handler(hass, request):
     # Prepare the Alexa response
-    adr = AlexaResponse(namespace="Alexa.Discovery", name="AddOrUpdateReport",
-                        payload={"scope": {"type": "BearerToken", "token": ""}})
+    alexa_response = AlexaResponse(namespace="Alexa.Discovery",
+                                   name="AddOrUpdateReport",
+                                   payload={"scope": {"type": "BearerToken", "token": ""}})
 
-    # Each domain represents a specific Alexa capability
-    capability_alexa = adr.create_payload_endpoint_capability()
-    capability_switch = adr.create_payload_endpoint_capability(
-        interface="Alexa.PowerController",
-        supported=[{"name": "powerState"}],
-        retrievable=True,
-        proactively_reported=True)
-    capability_dimmer = adr.create_payload_endpoint_capability(
-        interface="Alexa.BrightnessController",
-        supported=[{"name": "brightness"}],
-        retrievable=True,
-        proactively_reported=True)
-    capability_thermostat = adr.create_payload_endpoint_capability(
-        interface="Alexa.ThermostatController",
-        supported=[{"name": "lowerSetpoint"},
-                   {"name": "upperSetpoint"},
-                   {"name": "thermostatMode"}],
-        retrievable=False,
-        proactively_reported=True,
-        supported_modes=["HEAT", "COOL", "AUTO", "OFF"])
-    capability_temperature = adr.create_payload_endpoint_capability(
-        interface="Alexa.TemperatureSensor",
-        retrievable=False,
-        proactively_reported=True,
-        supported=[{"name": "temperature"}])
-    capability_contact = adr.create_payload_endpoint_capability(
-        interface="Alexa.ContactSensor",
-        retrievable=True,
-        proactively_reported=True,
-        supported=[{"name": "detectionState"}])
-
-    # Map entities to alexa endpoints
+    # Append alexa endpoint for each entity
     entities = hass.states.async_entity_ids()
-    for entity in entities:
-        domain = entity.split(".")[0]
-        state = hass.states.get(entity)
+    for entity_id in entities:
+        domain = entity_id.split(".")[0]
 
-        if domain in ["light"]:
-            adr.add_payload_endpoint(
-                endpoint_id=entity,
+        state = hass.states.get(entity_id)
+        capabilities, interface = get_capabilities(
+            alexa_response, state.attributes, domain)
+        if interface != "None":
+            alexa_response.add_payload_endpoint(
+                endpoint_id=entity_id,
                 friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
                 description=ATTR_DESCRIPTION,
                 manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=["LIGHT"],
-                capabilities=[capability_alexa, capability_switch, capability_dimmer])
+                display_categories=[get_display(domain, state.attributes)],
+                capabilities=capabilities)
 
-        if domain in ["switch", "script", "input_boolean"]:
-            adr.add_payload_endpoint(
-                endpoint_id=entity,
-                friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
-                description=ATTR_DESCRIPTION,
-                manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=["SWITCH"],
-                capabilities=[capability_alexa, capability_switch])
-
-        if domain in ["climate"]:
-            adr.add_payload_endpoint(
-                endpoint_id=entity,
-                friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
-                description=ATTR_DESCRIPTION,
-                manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=["THERMOSTAT"],
-                capabilities=[capability_alexa, capability_thermostat, capability_temperature])
-
-        if domain in ["sensor"]:
-            adr.add_payload_endpoint(
-                endpoint_id=entity,
-                friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
-                description=ATTR_DESCRIPTION,
-                manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=["CONTACT_SENSOR"],
-                capabilities=[capability_alexa, capability_contact])
-
-    return adr.get()
-
-    # TO-DO in case of an error
-    # except Exception as err:
-    #logger.info("Home-assistant call failed, because %s", str(err))
-    # return AlexaResponse(name="ErrorResponse",
-    #            payload={"type": "ENDPOINT_UNREACHABLE", "message": str(err)}).get()
+    return alexa_response.get()
 
 
 async def service_handler(hass, request):
@@ -225,7 +298,7 @@ async def service_handler(hass, request):
         domain = "script"
         service = "climate_adjust"
         property_value = request["directive"]["payload"]["targetSetpointDelta"]["value"]
-        payload = {"entity": entity_id,
+        payload = {"entity_id": entity_id,
                    "temp_delta": property_value}
         property_name = "targetSetpoint"
         property_value = {"value": property_value, "scale": "FAHRENHEIT"}
@@ -236,13 +309,29 @@ async def service_handler(hass, request):
     # TO-DO: Retrieve HASS status and send to Alexa gateway
 
     # Return an Alexa reponse
-    ar = AlexaResponse(correlation_token=correlation_token,
-                       scope_token=scope_token,
-                       endpoint_id=entity_id)
-    ar.add_context_property(namespace=namespace,
-                            name=property_name,
-                            value=property_value)
-    return ar.get()
+    alexa_response = AlexaResponse(correlation_token=correlation_token,
+                                   scope_token=scope_token,
+                                   endpoint_id=entity_id)
+    alexa_response.add_context_property(namespace=namespace,
+                                        name=property_name,
+                                        value=property_value)
+    return alexa_response.get()
+
+
+def get_propertyvalue(interface, state):
+    if interface in ["Alexa.ContactSensor", "Alexa.MotionSensor"]:
+        if state.state.lower() == "open" or state.state.lower() == "on":
+            property_value = "DETECTED"
+        else:
+            property_value = "NOT_DETECTED"
+
+    elif interface in ["Alexa.TemperatureSensor"]:
+        property_value = {"value": state.state, "scale": "FAHRENHEIT"}
+
+    else:
+        property_value = state.state.upper()
+
+    return property_value
 
 
 async def report_handler(hass, request):
@@ -253,30 +342,46 @@ async def report_handler(hass, request):
     domain = entity_id.split(".")[0]
 
     # Prepare Alexa reponse
-    ar = AlexaResponse(name="StateReport",
-                       correlation_token=correlation_token,
-                       scope_token=scope_token,
-                       endpoint_id=entity_id)
+    alexa_response = AlexaResponse(name="StateReport",
+                                   correlation_token=correlation_token,
+                                   scope_token=scope_token,
+                                   endpoint_id=entity_id)
 
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    if domain in ["sensor"]:
-        if state.state.lower() == "open" or state.state.lower() == "on":
-            property_value = "DETECTED"
-        else:
-            property_value = "NOT_DETECTED"
-        ar.add_context_property(namespace="Alexa.ContactSensor",
-                                name="detectionState",
-                                value=property_value)
+    interface = get_interface(domain, state.attributes)
 
-    if domain in ["light", "switch"]:
-        property_value = state.state.upper()
-        ar.add_context_property(namespace="Alexa.PowerController",
-                                name="powerState",
-                                value=property_value)
+    alexa_response.add_context_property(
+        namespace=interface,
+        name=get_supportedproperty(interface)[0]["name"],
+        value=get_propertyvalue(interface, state))
 
-    return ar.get()
+    return alexa_response.get()
+
+
+async def change_handler(hass, entity_id):
+    # Retrieve HASS state
+    state = hass.states.get(entity_id)
+    domain = entity_id.split(".")[0]
+
+    interface = get_interface(domain, state.attributes)
+
+    supported_property = get_supportedproperty(interface)
+    if supported_property:
+        alexa_response = AlexaResponse(namespace="Alexa",
+                                       name="ChangeReport",
+                                       endpoint_id=entity_id)
+        alexa_response.add_payload_property(namespace=interface,
+                                            name=supported_property[0]["name"],
+                                            value=get_propertyvalue(interface, state))
+    else:
+        alexa_response = AlexaResponse(namespace="Alexa.DoorbellEventSource",
+                                       name="DoorbellPress",
+                                       endpoint_id=entity_id)
+        alexa_response.add_payload_timestamp()
+
+    return alexa_response.get()
 
 
 def post_gateway(url, token, payload):
@@ -286,7 +391,7 @@ def post_gateway(url, token, payload):
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         _LOGGER.debug("Alexa Gateway post response: %s %s",
-                     str(response.status_code), response.text)
+                      str(response.status_code), response.text)
     except Exception as err:
         _LOGGER.error(
             "Failed to send event to Alexa gateway because %s %s", str(err), response.text)
@@ -361,39 +466,3 @@ def write_config(filename, config):
     except IOError as ex:
         _LOGGER.error("Failed to write configuration file, because %s", ex)
 
-
-def changereport_payload(token, endpoint_id, value):
-    data = {
-        "event": {
-            "header": {
-                "namespace": "Alexa",
-                "name": "ChangeReport",
-                "messageId": "1234567890",
-                "payloadVersion": "3"
-            },
-            "endpoint": {
-                "scope": {
-                    "type": "BearerToken",
-                    "token": token
-                },
-                "endpointId": endpoint_id
-            },
-            "payload": {
-                "change": {
-                    "cause": {
-                        "type": "PHYSICAL_INTERACTION"
-                    },
-                    "properties": [
-                        {
-                            "namespace": "Alexa.ContactSensor",
-                            "name": "detectionState",
-                            "value": value,
-                            "timeOfSample": datetime.now().astimezone().isoformat(),
-                            "uncertaintyInMilliseconds": 0
-                        }
-                    ]
-                }
-            }
-        }
-    }
-    return data
