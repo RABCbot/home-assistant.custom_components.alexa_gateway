@@ -1,7 +1,7 @@
 {
   "domain": "alexa_gateway",
   "name": "Alexa Gateway",
-  "documentation": "https://github.com/rabcbot",
+  "documentation": "https://github.com/RABCbot/home-assistant.custom_components.alexa_gateway",
   "dependencies": [],
   "codeowners": [],
   "requirements": [],

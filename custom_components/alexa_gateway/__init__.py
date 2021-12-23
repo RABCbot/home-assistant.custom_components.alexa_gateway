@@ -17,8 +17,8 @@ CONF_COUNTER = "counter"
 DEFAULT_TOKEN_CACHE = "/share/.alexa-gateway.token"
 _LOGGER = logging.getLogger(__name__)
 
-ATTR_MANUFACTURER = "GreenOlive"
-ATTR_DESCRIPTION = "GreenOlive Device"
+ATTR_MANUFACTURER = "RABCBot"
+ATTR_DESCRIPTION = "RABCBot SmartHome Device"
 ATTR_ALEXA_INTERFACE = "alexa_interface"
 ATTR_ALEXA_DISPLAY = "alexa_display"
 
@@ -140,8 +140,14 @@ def get_supportedproperty(interface):
     elif interface == "Alexa.BrightnessController":
         return [{"name": "brightness"}]
 
+    elif interface == "Alexa.EventDetectionSensor":
+        return [{"name": "humanPresenceDetectionState"}]
+
     elif interface == "Alexa.DoorbellEventSource":
         return None
+
+    elif interface == "Alexa.ModeController":
+        return [{"name": "mode"}]
 
     else:
         return [{"name": "detectionState"}]
@@ -166,16 +172,27 @@ def get_interface(domain, attributes):
     if domain in ["sensor", "binary_sensor"]:
         interface = "Alexa.ContactSensor"
 
+    if domain in ["cover"]:
+        interface = "Alexa.ModeController"
+
     # Overwrite using HASS attribute
     interface = attributes.get(ATTR_ALEXA_INTERFACE, interface)
     return interface
 
+def get_instance(interface):
+    instance = None
+
+    if interface == "Alexa.ModeController":
+        instance = "GarageDoor.Position"
+
+    return instance
 
 def get_capabilities(alexa_response, attributes, domain):
     capability = alexa_response.create_payload_endpoint_capability()
     capabilities = [capability]
 
     interface = get_interface(domain, attributes)
+    # TO-DO OJO Use the interface and not the domain
 
     if domain in ["light"]:
         capability = alexa_response.create_payload_endpoint_capability(
@@ -205,14 +222,14 @@ def get_capabilities(alexa_response, attributes, domain):
             interface=interface,
             supported=get_supportedproperty(interface),
             retrievable=False,
-            proactively_reported=True)
+            proactively_reported=False)
         capabilities.append(capability)
 
     if domain in ["climate"]:
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
-            supported_modes=["HEAT", "COOL", "AUTO", "OFF"],
+            configuration_modes=["HEAT", "COOL", "AUTO", "OFF"],
             retrievable=False,
             proactively_reported=True)
         capabilities.append(capability)
@@ -222,6 +239,102 @@ def get_capabilities(alexa_response, attributes, domain):
             interface=interface,
             supported=get_supportedproperty(interface),
             retrievable=True,
+            proactively_reported=True)
+        capabilities.append(capability)
+
+    if domain in ["cover"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            instance="GarageDoor.Position",
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True,
+            capability_resources={"friendlyNames": [
+                {"@type": "asset", "value": {"assetId": "Alexa.Setting.Mode"}}]},
+            configuration_modes=[
+                {
+                    "value": "Position.Up",
+                    "modeResources": {
+                        "friendlyNames": [
+                            {
+                                "@type": "asset",
+                                "value": {
+                                    "assetId": "Alexa.Value.Open"
+                                }
+                            },
+                            {
+                                "@type": "text",
+                                "value": {
+                                    "text": "Open",
+                                    "locale": "en-US"
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "value": "Position.Down",
+                    "modeResources": {
+                        "friendlyNames": [
+                            {
+                                "@type": "asset",
+                                "value": {
+                                    "assetId": "Alexa.Value.Close"
+                                }
+                            },
+                            {
+                                "@type": "text",
+                                "value": {
+                                    "text": "Closed",
+                                    "locale": "en-US"
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            configuration_ordered=False,
+            semantics_actions=[
+                {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Close", "Alexa.Actions.Lower"],
+                    "directive": {
+                        "name": "SetMode",
+                        "payload": {
+                            "mode": "Position.Down"
+                        }
+                    }
+                },
+                {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Open", "Alexa.Actions.Raise"],
+                    "directive": {
+                        "name": "SetMode",
+                        "payload": {
+                            "mode": "Position.Up"
+                        }
+                    }
+                }
+            ],
+            semantics_states=[
+                {
+                    "@type": "StatesToValue",
+                    "states": ["Alexa.States.Closed"],
+                    "value": "Position.Down"
+                },
+                {
+                    "@type": "StatesToValue",
+                    "states": ["Alexa.States.Open"],
+                    "value": "Position.Up"
+                }
+            ])
+        capabilities.append(capability)
+
+    if interface == "Alexa.EventDetectionSensor":
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            supported=get_supportedproperty(interface),
+            retrievable=False,
             proactively_reported=True)
         capabilities.append(capability)
 
@@ -277,6 +390,18 @@ async def service_handler(hass, request):
     entity_id = request["directive"]["endpoint"]["endpointId"]
     domain = entity_id.split(".")[0]
 
+    # Retrieve current HASS state
+    state = hass.states.get(entity_id)
+
+    if namespace == "Alexa.ModeController" and name == "SetMode":
+        property_name = "mode"
+        payload = {"entity_id": entity_id}
+        property_value = request["directive"]["payload"]["mode"]
+        if property_value == "Position.Up":
+          service = "open_cover"
+        else:
+          service = "close_cover"
+
     if namespace == "Alexa.PowerController":
         property_name = "powerState"
         payload = {"entity_id": entity_id}
@@ -295,18 +420,21 @@ async def service_handler(hass, request):
                    "brightness_pct": property_value}
 
     if namespace == "Alexa.ThermostatController" and name == "AdjustTargetTemperature":
-        domain = "script"
-        service = "climate_adjust"
+        domain = "climate"
+        service = "set_temperature"
         property_value = request["directive"]["payload"]["targetSetpointDelta"]["value"]
-        payload = {"entity_id": entity_id,
-                   "temp_delta": property_value}
+        payload = {"entity_id": entity_id}
+        payload["target_temp_high"] = state.attributes.get("target_temp_high") + property_value
+        payload["target_temp_low"] = state.attributes.get("target_temp_low") + property_value
         property_name = "targetSetpoint"
-        property_value = {"value": property_value, "scale": "FAHRENHEIT"}
+        if property_value > 0:
+            property_value = {"value": payload["target_temp_low"], "scale": "FAHRENHEIT"}
+        else:
+            property_value = {"value": payload["target_temp_high"], "scale": "FAHRENHEIT"}
 
     # Call HASS Service
+    _LOGGER.debug("Hass Services Call, with domain: %s, service: %s and payload: %s", domain, service, payload)
     await hass.services.async_call(domain, service, payload)
-
-    # TO-DO: Retrieve HASS status and send to Alexa gateway
 
     # Return an Alexa reponse
     alexa_response = AlexaResponse(correlation_token=correlation_token,
@@ -319,7 +447,10 @@ async def service_handler(hass, request):
 
 
 def get_propertyvalue(interface, state):
-    if interface in ["Alexa.ContactSensor", "Alexa.MotionSensor"]:
+    if interface in ["Alexa.EventDetectionSensor"]:
+        property_value = {"value": "DETECTED"}
+
+    elif interface in ["Alexa.ContactSensor", "Alexa.MotionSensor"]:
         if state.state.lower() == "open" or state.state.lower() == "on":
             property_value = "DETECTED"
         else:
@@ -327,6 +458,14 @@ def get_propertyvalue(interface, state):
 
     elif interface in ["Alexa.TemperatureSensor"]:
         property_value = {"value": state.state, "scale": "FAHRENHEIT"}
+
+    elif interface in ["Alexa.ModeController"]:
+        if state.state.lower() == "open":
+            property_value = "Position.Up"
+        elif state.state.lower() == "closed":
+            property_value = "Position.Down"
+        else:
+            property_value = "INVALID"
 
     else:
         property_value = state.state.upper()
@@ -351,9 +490,11 @@ async def report_handler(hass, request):
     state = hass.states.get(entity_id)
 
     interface = get_interface(domain, state.attributes)
+    instance = get_instance(interface)
 
     alexa_response.add_context_property(
         namespace=interface,
+        instance=instance,
         name=get_supportedproperty(interface)[0]["name"],
         value=get_propertyvalue(interface, state))
 
@@ -366,6 +507,7 @@ async def change_handler(hass, entity_id):
     domain = entity_id.split(".")[0]
 
     interface = get_interface(domain, state.attributes)
+    instance = get_instance(interface)
 
     supported_property = get_supportedproperty(interface)
     if supported_property:
@@ -373,6 +515,7 @@ async def change_handler(hass, entity_id):
                                        name="ChangeReport",
                                        endpoint_id=entity_id)
         alexa_response.add_payload_property(namespace=interface,
+                                            instance=instance,
                                             name=supported_property[0]["name"],
                                             value=get_propertyvalue(interface, state))
     else:
@@ -465,4 +608,3 @@ def write_config(filename, config):
             json.dump(config, f)
     except IOError as ex:
         _LOGGER.error("Failed to write configuration file, because %s", ex)
-

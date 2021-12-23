@@ -105,21 +105,46 @@ class AlexaResponse:
             "interface": kwargs.get("interface", "Alexa"),
             "version": kwargs.get("version", "3")
         }
+
+        instance = kwargs.get("instance", None)
+        if instance:
+            capability["instance"] = instance
+
+        capability_resources = kwargs.get("capability_resources", None)
+        if capability_resources:
+            capability["capabilityResources"] = capability_resources
+
         supported = kwargs.get("supported", None)
         if supported:
             capability["properties"] = {}
             capability["properties"]["supported"] = supported
             capability["properties"]["proactivelyReported"] = kwargs.get("proactively_reported", False)
             capability["properties"]["retrievable"] = kwargs.get("retrievable", False)
-        supportedModes = kwargs.get("supported_modes", None)
-        if supportedModes:
+
+        configuration_modes = kwargs.get("configuration_modes", None)
+        if configuration_modes:
             capability["configuration"] = {}
-            capability["configuration"]["supportedModes"] = supportedModes
+            capability["configuration"]["supportedModes"] = configuration_modes
+
+        configuration_ordered = kwargs.get("configuration_ordered", None)
+        if configuration_ordered is not None:
+            capability["configuration"]["ordered"] = configuration_ordered
+
         verifications_required = kwargs.get("verifications_required", None)
         if verifications_required:
           capability["verificationsRequired"] = []
           for directive in verifications_required:
             capability["verificationsRequired"].append({"directive": directive, "methods": [{"@type": "Confirmation"}]})
+
+        semantics_actions = kwargs.get("semantics_actions", None)
+        if semantics_actions:
+            capability["semantics"] = {}
+            capability["semantics"]["actionMappings"] = semantics_actions
+
+        semantics_states = kwargs.get("semantics_states", None)
+        if semantics_states:
+            capability["semantics"]["stateMappings"] = semantics_states
+
         return capability
 
     def get(self, remove_empty=True):
