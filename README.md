@@ -19,6 +19,15 @@ alexa_gateway:
   client_secret: !secret  ALEXA_CLIENT_SECRET
 ```
 
+## Customize
+It is possible to overrides the Alexa interface and Alexa display values
+For example, for an entity that controls your garage door, add these attributes in the customize 
+```
+alexa_interface: Alexa.ModeController
+alexa_display: GARAGE_DOOR
+```
+
+
 ## License
 alexa_response.py
 Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved
