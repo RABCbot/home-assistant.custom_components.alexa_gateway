@@ -50,7 +50,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         _LOGGER.debug("Request received: %s", call.data)
         entity_id = config[COMPONENT_DOMAIN].get(CONF_COUNTER)
         _LOGGER.debug("Incrementing counter: %s", entity_id)
-        await hass.services.async_call("counter", "increment", {"entity_id": entity_id})
+        if entity_id:
+            await hass.services.async_call("counter", "increment", {"entity_id": entity_id})
 
         name = call.data["directive"]["header"]["name"]
         namespace = call.data["directive"]["header"]["namespace"]
@@ -150,34 +151,46 @@ def get_supportedproperty(interface):
         return [{"name": "mode"}]
 
     else:
-        return [{"name": "detectionState"}]
+        raise Exception(f"Supported Property not implemented yet for Interface: {interface}")
 
+def get_interfaces(domain, override):
+    interfaces = []
 
-def get_interface(domain, attributes):
-    interface = "None"
-    if domain in ["light"]:
-        # TO-DO: what to do with dual capabilities, like light thathave brighness and power???
-        # interface = "Alexa.BrightnessController"
-        interface = "Alexa.PowerController"
+    if not override:
+        if domain in ["light"]:
+            interfaces.append("Alexa.PowerController")
+            interfaces.append("Alexa.BrightnessController")
+            interfaces.append("Alexa")
 
-    if domain in ["switch", "input_boolean"]:
-        interface = "Alexa.PowerController"
+        if domain in ["switch", "input_boolean"]:
+            interfaces.append("Alexa.PowerController")
+            interfaces.append("Alexa")
 
-    if domain in ["script"]:
-        interface = "Alexa.PowerController"
+        if domain in ["script"]:
+            interfaces.append("Alexa.PowerController")
+            interfaces.append("Alexa")
 
-    if domain in ["climate"]:
-        interface = "Alexa.ThermostatController"
+        if domain in ["climate"]:
+            interfaces.append("Alexa.TemperatureSensor")
+            interfaces.append("Alexa.ThermostatController")
+            interfaces.append("Alexa")
 
-    if domain in ["sensor", "binary_sensor"]:
-        interface = "Alexa.ContactSensor"
+        if domain in ["sensor", "binary_sensor"]:
+            interfaces.append("Alexa.ContactSensor")
+            interfaces.append("Alexa")
 
-    if domain in ["cover"]:
-        interface = "Alexa.ModeController"
+        if domain in ["cover"]:
+            interfaces.append("Alexa.ModeController")
+            interfaces.append("Alexa")
 
-    # Overwrite using HASS attribute
-    interface = attributes.get(ATTR_ALEXA_INTERFACE, interface)
-    return interface
+    elif override == "Alexa.DoorbellEventSource":
+        interfaces.append("Alexa.DoorbellEventSource")
+
+    elif override != "None":
+        interfaces.append(override)
+        interfaces.append("Alexa")
+
+    return interfaces
 
 def get_instance(interface):
     instance = None
@@ -187,62 +200,46 @@ def get_instance(interface):
 
     return instance
 
-def get_capabilities(alexa_response, attributes, domain):
-    capability = alexa_response.create_payload_endpoint_capability()
-    capabilities = [capability]
+def get_capability(alexa_response, interface):
 
-    interface = get_interface(domain, attributes)
-    # TO-DO OJO Use the interface and not the domain
+    if interface == "Alexa":
+        capability = alexa_response.create_payload_endpoint_capability()
 
-    if domain in ["light"]:
+    elif interface == "Alexa.DoorbellEventSource":
         capability = alexa_response.create_payload_endpoint_capability(
-            interface="Alexa.BrightnessController",
-            supported=get_supportedproperty(interface),
-            retrievable=True,
+            interface=interface,
             proactively_reported=True)
-        capabilities.append(capability)
 
+    elif interface in ["Alexa.BrightnessController", "Alexa.PowerController", "Alexa.TemperatureSensor"]:
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
             retrievable=True,
             proactively_reported=True)
-        capabilities.append(capability)
 
-    if domain in ["switch", "input_boolean"]:
+    elif interface == "Alexa.ContactSensor":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
             retrievable=True,
             proactively_reported=True)
-        capabilities.append(capability)
 
-    if domain in ["script"]:
+    elif interface == "Alexa.MotionSensor":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
-            retrievable=False,
-            proactively_reported=False)
-        capabilities.append(capability)
+            retrievable=True,
+            proactively_reported=True)
 
-    if domain in ["climate"]:
+    elif interface == "Alexa.ThermostatController":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
             configuration_modes=["HEAT", "COOL", "AUTO", "OFF"],
             retrievable=False,
             proactively_reported=True)
-        capabilities.append(capability)
 
-    if domain in ["sensor", "binary_sensor"]:
-        capability = alexa_response.create_payload_endpoint_capability(
-            interface=interface,
-            supported=get_supportedproperty(interface),
-            retrievable=True,
-            proactively_reported=True)
-        capabilities.append(capability)
-
-    if domain in ["cover"]:
+    elif interface == "Alexa.ModeController":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             instance="GarageDoor.Position",
@@ -328,31 +325,32 @@ def get_capabilities(alexa_response, attributes, domain):
                     "value": "Position.Up"
                 }
             ])
-        capabilities.append(capability)
 
-    if interface == "Alexa.EventDetectionSensor":
+    elif interface == "Alexa.EventDetectionSensor":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_supportedproperty(interface),
             retrievable=False,
             proactively_reported=True)
-        capabilities.append(capability)
 
-    # Fix doorbell event
-    if interface == "Alexa.DoorbellEventSource":
-        capabilities.pop(0)
-        capabilities[0]["proactivelyReported"] = True
-
-    return capabilities, interface
-
-
-def get_display(domain, attributes):
-    if domain == "light":
-        default = "LIGHT"
     else:
-        default = "OTHER"
+        raise Exception(f"Capability not implemented yet for Interface: {interface}")
 
-    return attributes.get(ATTR_ALEXA_DISPLAY, default)
+    return capability
+
+
+def get_display(domain):
+    if domain == "light":
+        return "LIGHT"
+
+    elif domain in ["script"]:
+        return "ACTIVITY_TRIGGER"
+
+    elif domain in ["climate"]:
+        return "THERMOSTAT"
+
+    else:
+        return "OTHER"
 
 
 async def discovery_handler(hass, request):
@@ -364,18 +362,28 @@ async def discovery_handler(hass, request):
     # Append alexa endpoint for each entity
     entities = hass.states.async_entity_ids()
     for entity_id in entities:
+        _LOGGER.debug("Discovering entity: %s", entity_id)
         domain = entity_id.split(".")[0]
 
         state = hass.states.get(entity_id)
-        capabilities, interface = get_capabilities(
-            alexa_response, state.attributes, domain)
-        if interface != "None":
+
+    # Append alexa endpoint for each entity
+    entities = hass.states.async_entity_ids()
+    for entity_id in entities:
+        domain = entity_id.split(".")[0]
+        state = hass.states.get(entity_id)
+
+        capabilities = []
+        for interface in get_interfaces(domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+            capabilities.append(get_capability(alexa_response, interface))
+        
+        if len(capabilities) > 0:
             alexa_response.add_payload_endpoint(
                 endpoint_id=entity_id,
                 friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
                 description=ATTR_DESCRIPTION,
                 manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=[get_display(domain, state.attributes)],
+                display_categories=[state.attributes.get(ATTR_ALEXA_DISPLAY, get_display(domain))],
                 capabilities=capabilities)
 
     return alexa_response.get()
@@ -489,7 +497,8 @@ async def report_handler(hass, request):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    interface = get_interface(domain, state.attributes)
+    # TO-DO What to do with multiple inetrafces
+    interface = get_interfaces(domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
     instance = get_instance(interface)
 
     alexa_response.add_context_property(
@@ -506,7 +515,8 @@ async def change_handler(hass, entity_id):
     state = hass.states.get(entity_id)
     domain = entity_id.split(".")[0]
 
-    interface = get_interface(domain, state.attributes)
+    # TO-DO What to do with multiple inetrafces
+    interface = get_interfaces(domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
     instance = get_instance(interface)
 
     supported_property = get_supportedproperty(interface)

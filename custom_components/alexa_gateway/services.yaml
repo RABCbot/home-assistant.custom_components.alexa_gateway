@@ -1,11 +1,8 @@
 report_state:
-  name: Sends a ChangeReport to the Alexa Gateway
+  name: Sends a ChangeReport message to the Alexa Gateway
   fields:
     entity_id:
       required: True
       example: "sensor.garage_door"
-    state:
-      required: True
-      example: "DETECTED"
 process_request:
-  name: Process an Alexa SmartHome request
+  name: Process a SmartHome request from Alexa

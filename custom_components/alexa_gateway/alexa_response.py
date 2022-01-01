@@ -110,16 +110,20 @@ class AlexaResponse:
         if instance:
             capability["instance"] = instance
 
-        capability_resources = kwargs.get("capability_resources", None)
-        if capability_resources:
-            capability["capabilityResources"] = capability_resources
-
+        proactively_reported = kwargs.get("proactively_reported", None)
         supported = kwargs.get("supported", None)
+        if proactively_reported and not supported:
+            capability["proactivelyReported"] = proactively_reported
         if supported:
             capability["properties"] = {}
             capability["properties"]["supported"] = supported
             capability["properties"]["proactivelyReported"] = kwargs.get("proactively_reported", False)
             capability["properties"]["retrievable"] = kwargs.get("retrievable", False)
+
+        capability_resources = kwargs.get("capability_resources", None)
+        if capability_resources:
+            capability["capabilityResources"] = capability_resources
+
 
         configuration_modes = kwargs.get("configuration_modes", None)
         if configuration_modes:
