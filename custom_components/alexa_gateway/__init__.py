@@ -66,13 +66,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                             code)
 
         elif namespace == "Alexa.Discovery":
+            response = await discovery_handler(hass, call.data)
             token = await get_token(hass,
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_AUTH_URL),
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_CLIENT_ID),
                                     config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
-            response = await discovery_handler(hass, call.data)
             response["event"]["payload"]["scope"]["token"] = token
             _LOGGER.debug("Response posted: %s", response)
             url = config[COMPONENT_DOMAIN].get(CONF_URL)
@@ -82,13 +82,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                                               response)
 
         elif name == "ReportState":
+            response = await report_handler(hass, call.data)
             token = await get_token(hass,
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_AUTH_URL),
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_CLIENT_ID),
                                     config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
-            response = await report_handler(hass, call.data)
             response["event"]["endpoint"]["scope"]["token"] = token
             _LOGGER.debug("Response posted: %s", response)
             await hass.async_add_executor_job(post_gateway,
@@ -98,13 +98,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                                               response)
 
         else:
+            response = await service_handler(hass, call.data)
             token = await get_token(hass,
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_AUTH_URL),
                                     config[COMPONENT_DOMAIN].get(
                                         CONF_CLIENT_ID),
                                     config[COMPONENT_DOMAIN].get(CONF_CLIENT_SECRET))
-            response = await service_handler(hass, call.data)
             response["event"]["endpoint"]["scope"]["token"] = token
             _LOGGER.debug("Response posted: %s", response)
             await hass.async_add_executor_job(post_gateway,
