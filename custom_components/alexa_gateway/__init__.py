@@ -150,6 +150,9 @@ def get_supportedproperty(interface):
     elif interface == "Alexa.ModeController":
         return [{"name": "mode"}]
 
+    elif interface == "Alexa.RangeController":
+        return [{"name": "rangeValue"}]
+
     else:
         raise Exception(f"Supported Property not implemented yet for Interface: {interface}")
 
@@ -183,6 +186,10 @@ def get_interfaces(domain, override):
             interfaces.append("Alexa.ModeController")
             interfaces.append("Alexa")
 
+        if domain in ["counter"]:
+            interfaces.append("Alexa.RangeController")
+            interfaces.append("Alexa")
+
     elif override == "Alexa.DoorbellEventSource":
         interfaces.append("Alexa.DoorbellEventSource")
 
@@ -197,6 +204,9 @@ def get_instance(interface):
 
     if interface == "Alexa.ModeController":
         instance = "GarageDoor.Position"
+
+    if interface == "Alexa.RangeController":
+        instance = "Counter.Number"
 
     return instance
 
@@ -239,10 +249,20 @@ def get_capability(alexa_response, interface):
             retrievable=False,
             proactively_reported=True)
 
+    elif interface == "Alexa.RangeController":
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            instance=get_instance(interface),
+            supported=get_supportedproperty(interface),
+            retrievable=True,
+            proactively_reported=True,
+            capability_resources={"friendlyNames": [{"@type": "text", "value": {"text": "number", "locale": "en-US"}}]},
+            configuration_range={"minimumValue": 0, "maximumValue": 100, "precision": 1})
+
     elif interface == "Alexa.ModeController":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
-            instance="GarageDoor.Position",
+            instance=get_instance(interface),
             supported=get_supportedproperty(interface),
             retrievable=True,
             proactively_reported=True,
@@ -410,6 +430,22 @@ async def service_handler(hass, request):
         else:
           service = "close_cover"
 
+    if namespace == "Alexa.RangeController" and name == "AdjustRangeValue":
+        property_name = "rangeValue"
+        payload = {"entity_id": entity_id}
+        property_value = request["directive"]["payload"]["rangeValueDelta"]
+        if property_value > 0:
+          service = "increment"
+        else:
+          service = "decrement"
+        property_value = int(state.state) + int(property_value)
+
+    if namespace == "Alexa.RangeController" and name == "SetRangeValue":
+        property_name = "rangeValue"
+        property_value = request["directive"]["payload"]["rangeValue"]
+        service = "configure"
+        payload = {"entity_id": entity_id, "value": property_value}
+
     if namespace == "Alexa.PowerController":
         property_name = "powerState"
         payload = {"entity_id": entity_id}
@@ -474,6 +510,9 @@ def get_propertyvalue(interface, state):
             property_value = "Position.Down"
         else:
             property_value = "INVALID"
+
+    elif interface in ["Alexa.RangeController"]:
+        property_value = int(state.state)
 
     else:
         property_value = state.state.upper()

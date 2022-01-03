@@ -124,6 +124,11 @@ class AlexaResponse:
         if capability_resources:
             capability["capabilityResources"] = capability_resources
 
+        configuration_range = kwargs.get("configuration_range", None)
+        if configuration_range:
+            capability["configuration"] = {}
+            capability["configuration"]["supportedRange"] = configuration_range
+            capability["configuration"]["presets"] = kwargs.get("presets", [])
 
         configuration_modes = kwargs.get("configuration_modes", None)
         if configuration_modes:
