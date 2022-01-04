@@ -535,8 +535,6 @@ def get_futurevalue(name, service, data, state):
         raise Exception(
             f"Future value not yet implemented for name: {name}; service: {service}")
 
-
-
     return property_value    
 
 
@@ -591,17 +589,16 @@ async def report_handler(hass, request):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    # TO-DO What to do with multiple inetrafces
-    interface = get_interfaces(
-        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
-    instance = get_instance(interface)
+    for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+        instance = get_instance(interface)
 
-    for prop in get_properties(interface):
-        alexa_response.add_context_property(
-            namespace=interface,
-            instance=instance,
-            name=prop["name"],
-            value=get_propertyvalue(prop["name"], state))
+        if interface != "Alexa":
+            for prop in get_properties(interface):
+                alexa_response.add_context_property(
+                    namespace=interface,
+                    instance=instance,
+                    name=prop["name"],
+                    value=get_propertyvalue(prop["name"], state))
 
     return alexa_response.get()
 
@@ -609,29 +606,28 @@ async def report_handler(hass, request):
 async def change_handler(hass, entity_id):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
-    domain = entity_id.split(".")[0]
 
-    # TO-DO What to do with multiple inetrafces
-    interface = get_interfaces(
-        domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
-    instance = get_instance(interface)
+    for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+        instance = get_instance(interface)
 
-    props = get_properties(interface)
-    if len(prop) > 0:
-        alexa_response = AlexaResponse(namespace="Alexa",
-                                       name="ChangeReport",
-                                       endpoint_id=entity_id)
-        for prop in props:
-            alexa_response.add_payload_property(namespace=interface,
-                                                instance=instance,
-                                                name=prop["name"],
-                                                value=get_propertyvalue(prop["name"], state))
+        if interface != "Alexa":
 
-    else:
-        alexa_response = AlexaResponse(namespace="Alexa.DoorbellEventSource",
-                                       name="DoorbellPress",
-                                       endpoint_id=entity_id)
-        alexa_response.add_payload_timestamp()
+            props = get_properties(interface)
+            if len(prop) > 0:
+                alexa_response = AlexaResponse(namespace="Alexa",
+                                            name="ChangeReport",
+                                            endpoint_id=entity_id)
+                for prop in props:
+                    alexa_response.add_payload_property(namespace=interface,
+                                                        instance=instance,
+                                                        name=prop["name"],
+                                                        value=get_propertyvalue(prop["name"], state))
+
+            else:
+                alexa_response = AlexaResponse(namespace="Alexa.DoorbellEventSource",
+                                               name="DoorbellPress",
+                                               endpoint_id=entity_id)
+                alexa_response.add_payload_timestamp()
 
     return alexa_response.get()
 
