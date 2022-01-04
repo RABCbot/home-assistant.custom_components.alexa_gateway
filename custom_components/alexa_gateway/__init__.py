@@ -49,7 +49,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def process_request(call: ServiceCall) -> None:
         _LOGGER.debug("Request received: %s", call.data)
         entity_id = config[COMPONENT_DOMAIN].get(CONF_COUNTER)
-        _LOGGER.debug("Incrementing counter: %s", entity_id)
         if entity_id:
             await hass.services.async_call("counter", "increment", {"entity_id": entity_id})
 
@@ -395,6 +394,15 @@ def get_propertyvalue(name, state):
     elif name == "temperature" and state.domain == "climate":
         property_value = {"value": state.attributes.get("current_temperature"), "scale": "FAHRENHEIT"}
 
+    elif name == "thermostatMode" and state.domain == "climate":
+        property_value = {"value": state.state}
+
+    elif name == "lowerSetpoint" and state.domain == "climate":
+        property_value = {"value": state.attributes.get("target_temp_low"), "scale": "FAHRENHEIT"}
+
+    elif name == "upperSetpoint" and state.domain == "climate":
+        property_value = {"value": state.attributes.get("target_temp_high"), "scale": "FAHRENHEIT"}
+
     elif name == "mode":
         if state.state.lower() == "open":
             property_value = "Position.Up"
@@ -421,19 +429,10 @@ async def discovery_handler(hass, request):
     # Append alexa endpoint for each entity
     entities = hass.states.async_entity_ids()
     for entity_id in entities:
-        _LOGGER.debug("Discovering entity: %s", entity_id)
-        domain = entity_id.split(".")[0]
-
-        state = hass.states.get(entity_id)
-
-    # Append alexa endpoint for each entity
-    entities = hass.states.async_entity_ids()
-    for entity_id in entities:
-        domain = entity_id.split(".")[0]
         state = hass.states.get(entity_id)
 
         capabilities = []
-        for interface in get_interfaces(domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+        for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
             capabilities.append(get_capability(alexa_response, interface))
 
         if len(capabilities) > 0:
@@ -449,89 +448,131 @@ async def discovery_handler(hass, request):
     return alexa_response.get()
 
 
+def get_service(interface, name, payload, state):
+
+    if interface == "Alexa.ModeController" and name == "SetMode":
+        if payload["mode"] == "Position.Up":
+            service = "open_cover"
+        else:
+            service = "close_cover"
+        data = {"entity_id": state.entity_id}
+
+    elif interface == "Alexa.RangeController" and name == "AdjustRangeValue":
+        if payload["rangeValueDelta"] > 0:
+            service = "increment"
+        else:
+            service = "decrement"
+        data = {"entity_id": state.entity_id}
+
+    elif interface == "Alexa.RangeController" and name == "SetRangeValue":
+        service = "configure"
+        data = {"entity_id": state.entity_id, "value": payload["rangeValue"]}
+
+    elif interface == "Alexa.PowerController":
+        if name == "TurnOff":
+            service = "turn_off"
+        else:
+            service = "turn_on"
+        data = {"entity_id": state.entity_id}
+
+    elif interface == "Alexa.BrightnessController":
+        service = "turn_on"
+        data = {"entity_id": state.entity_id,
+                "brightness_pct": payload["brightness"]}
+
+    elif interface == "Alexa.ThermostatController" and name == "AdjustTargetTemperature":
+        service = "set_temperature"
+        data = {"entity_id": state.entity_id}
+        data["target_temp_high"] = state.attributes.get(
+            "target_temp_high") + payload["targetSetpointDelta"]["value"]
+        data["target_temp_low"] = state.attributes.get(
+            "target_temp_low") + payload["targetSetpointDelta"]["value"]
+    
+    else:
+        raise Exception(
+            f"Service not yet implemented for Interface: {interface}")
+
+
+    return service, data
+
+
+def get_futurevalue(name, service, data, state):
+
+    if service == "open_cover":
+        return "Position.Up"
+
+    elif service == "close_cover":
+        return "Position.Close"
+
+    elif service == "increment":
+        return int(state.state) + 1
+
+    elif service == "decrement":
+        return int(state.state) - 1
+
+    elif service == "configure":
+        return data["value"]
+
+    elif service == "turn_off":
+        return "OFF"
+
+    elif service == "turn_on":
+        return "ON"
+
+    elif "brightness_pct" in data:
+        return data["brightness_pct"]
+
+    elif name == "thermostatMode":
+        return {"value": state.state}
+
+    elif name == "lowerSetpoint":
+        return {"value": data["target_temp_low"], "scale": "FAHRENHEIT"}
+
+    elif name == "upperSetpoint":
+        return {"value": data["target_temp_high"], "scale": "FAHRENHEIT"}
+
+    else:
+        raise Exception(
+            f"Future value not yet implemented for name: {name}; service: {service}")
+
+
+
+    return property_value    
+
+
 async def service_handler(hass, request):
     # Extract Alexa request values and map to Home-Assistant
     name = request["directive"]["header"]["name"]
-    namespace = request["directive"]["header"]["namespace"]
+    interface = request["directive"]["header"]["namespace"]
     correlation_token = request["directive"]["header"]["correlationToken"]
     scope_token = request["directive"]["endpoint"]["scope"]["token"]
     entity_id = request["directive"]["endpoint"]["endpointId"]
-    domain = entity_id.split(".")[0]
+    payload = request["directive"]["payload"]
 
     # Retrieve current HASS state
     state = hass.states.get(entity_id)
 
-    if namespace == "Alexa.ModeController" and name == "SetMode":
-        property_name = "mode"
-        payload = {"entity_id": entity_id}
-        property_value = request["directive"]["payload"]["mode"]
-        if property_value == "Position.Up":
-            service = "open_cover"
-        else:
-            service = "close_cover"
-
-    if namespace == "Alexa.RangeController" and name == "AdjustRangeValue":
-        property_name = "rangeValue"
-        payload = {"entity_id": entity_id}
-        property_value = request["directive"]["payload"]["rangeValueDelta"]
-        if property_value > 0:
-            service = "increment"
-        else:
-            service = "decrement"
-        property_value = int(state.state) + int(property_value)
-
-    if namespace == "Alexa.RangeController" and name == "SetRangeValue":
-        property_name = "rangeValue"
-        property_value = request["directive"]["payload"]["rangeValue"]
-        service = "configure"
-        payload = {"entity_id": entity_id, "value": property_value}
-
-    if namespace == "Alexa.PowerController":
-        property_name = "powerState"
-        payload = {"entity_id": entity_id}
-        if name == "TurnOff":
-            service = "turn_off"
-            property_value = "OFF"
-        else:
-            service = "turn_on"
-            property_value = "ON"
-
-    if namespace == "Alexa.BrightnessController":
-        property_name = "brightness"
-        property_value = request["directive"]["payload"]["brightness"]
-        service = "turn_on"
-        payload = {"entity_id": entity_id,
-                   "brightness_pct": property_value}
-
-    if namespace == "Alexa.ThermostatController" and name == "AdjustTargetTemperature":
-        domain = "climate"
-        service = "set_temperature"
-        property_value = request["directive"]["payload"]["targetSetpointDelta"]["value"]
-        payload = {"entity_id": entity_id}
-        payload["target_temp_high"] = state.attributes.get(
-            "target_temp_high") + property_value
-        payload["target_temp_low"] = state.attributes.get(
-            "target_temp_low") + property_value
-        property_name = "targetSetpoint"
-        if property_value > 0:
-            property_value = {
-                "value": payload["target_temp_low"], "scale": "FAHRENHEIT"}
-        else:
-            property_value = {
-                "value": payload["target_temp_high"], "scale": "FAHRENHEIT"}
-
     # Call HASS Service
+    service, data = get_service(interface, name, payload, state)
     _LOGGER.debug(
-        "Hass Services Call, with domain: %s, service: %s and payload: %s", domain, service, payload)
-    await hass.services.async_call(domain, service, payload)
+        "Hass Services Call, with domain: %s, service: %s and payload: %s", state.domain, service, data)
+    await hass.services.async_call(state.domain, service, data)
 
     # Return an Alexa reponse
     alexa_response = AlexaResponse(correlation_token=correlation_token,
                                    scope_token=scope_token,
                                    endpoint_id=entity_id)
-    alexa_response.add_context_property(namespace=namespace,
-                                        name=property_name,
-                                        value=property_value)
+
+    instance = get_instance(interface)
+
+    # TO-DO: Dont use future value
+    for prop in get_properties(interface):
+        alexa_response.add_context_property(
+            namespace=interface,
+            instance=instance,
+            name=prop["name"],
+            value=get_futurevalue(prop["name"], service, data, state))
+
     return alexa_response.get()
 
 
@@ -540,7 +581,6 @@ async def report_handler(hass, request):
     correlation_token = request["directive"]["header"]["correlationToken"]
     scope_token = request["directive"]["endpoint"]["scope"]["token"]
     entity_id = request["directive"]["endpoint"]["endpointId"]
-    domain = entity_id.split(".")[0]
 
     # Prepare Alexa reponse
     alexa_response = AlexaResponse(name="StateReport",
@@ -553,7 +593,7 @@ async def report_handler(hass, request):
 
     # TO-DO What to do with multiple inetrafces
     interface = get_interfaces(
-        domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
+        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))[0]
     instance = get_instance(interface)
 
     for prop in get_properties(interface):
