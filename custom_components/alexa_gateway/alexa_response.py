@@ -75,13 +75,18 @@ class AlexaResponse:
         self.payload_timestamp = get_utc_timestamp()
 
     def create_property(self, **kwargs):
-        return {
+        prop = {
             "namespace": kwargs.get("namespace", "Alexa.EndpointHealth"),
             "name": kwargs.get("name", "connectivity"),
             "value": kwargs.get("value", {"value": "OK"}),
             "timeOfSample": get_utc_timestamp(),
             "uncertaintyInMilliseconds": kwargs.get("uncertainty_in_milliseconds", 0)
         }
+        instance = kwargs.get("instance", None)
+        if instance:
+            prop["instance"] = instance
+
+        return prop
 
     def create_payload_endpoint(self, **kwargs):
         # Return the proper structure expected for the endpoint
