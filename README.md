@@ -20,8 +20,8 @@ alexa_gateway:
 ```
 
 ## Customize
-It is possible to overrides the Alexa interface and Alexa display values
-For example, for an entity that controls your garage door, add these attributes in the customize 
+It is possible to override the Alexa interface and Alexa display values</br>
+For example, for an entity that controls your garage door, add these attributes in your customize section
 ```
 alexa_interface: Alexa.ModeController
 alexa_display: GARAGE_DOOR
