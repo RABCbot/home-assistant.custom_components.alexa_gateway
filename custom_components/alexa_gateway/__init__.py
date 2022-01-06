@@ -126,6 +126,8 @@ def get_interfaces(domain, override):
         if domain in ["light"]:
             interfaces.append("Alexa.PowerController")
             interfaces.append("Alexa.BrightnessController")
+            interfaces.append("Alexa.ColorController")
+            interfaces.append("Alexa.ColorTemperatureController")
             interfaces.append("Alexa")
 
         if domain in ["switch", "input_boolean"]:
@@ -185,7 +187,7 @@ def get_capability(alexa_response, interface):
             interface=interface,
             proactively_reported=True)
 
-    elif interface in ["Alexa.BrightnessController", "Alexa.PowerController", "Alexa.TemperatureSensor"]:
+    elif interface in ["Alexa.BrightnessController", "Alexa.PowerController", "Alexa.TemperatureSensor", "Alexa.ColorController", "Alexa.ColorTemperatureController"]:
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_properties(interface),
@@ -361,6 +363,12 @@ def get_properties(interface):
     elif interface == "Alexa.BrightnessController":
         return [{"name": "brightness"}]
 
+    elif interface == "Alexa.ColorController":
+        return [{"name": "color"}]
+
+    elif interface == "Alexa.ColorTemperatureController":
+        return [{"name": "colorTemperatureInKelvin"}]
+
     elif interface == "Alexa.EventDetectionSensor":
         return [{"name": "humanPresenceDetectionState"}]
 
@@ -390,18 +398,21 @@ def get_propertyvalue(name, state):
 
     elif name == "temperature" and state.domain == "sensor":
         property_value = {"value": state.state, "scale": "FAHRENHEIT"}
-    
+
     elif name == "temperature" and state.domain == "climate":
-        property_value = {"value": state.attributes.get("current_temperature"), "scale": "FAHRENHEIT"}
+        property_value = {"value": state.attributes.get(
+            "current_temperature"), "scale": "FAHRENHEIT"}
 
     elif name == "thermostatMode" and state.domain == "climate":
         property_value = {"value": state.state}
 
     elif name == "lowerSetpoint" and state.domain == "climate":
-        property_value = {"value": state.attributes.get("target_temp_low"), "scale": "FAHRENHEIT"}
+        property_value = {"value": state.attributes.get(
+            "target_temp_low"), "scale": "FAHRENHEIT"}
 
     elif name == "upperSetpoint" and state.domain == "climate":
-        property_value = {"value": state.attributes.get("target_temp_high"), "scale": "FAHRENHEIT"}
+        property_value = {"value": state.attributes.get(
+            "target_temp_high"), "scale": "FAHRENHEIT"}
 
     elif name == "mode":
         if state.state.lower() == "open":
@@ -413,6 +424,16 @@ def get_propertyvalue(name, state):
 
     elif name == "rangeValue":
         property_value = int(state.state)
+
+    elif name == "color":
+        property_value = {
+            "hue": 0.0,
+            "saturation": 0.0,
+            "brightness": 0.0
+        }
+
+    elif name == "colorTemperatureInKelvin":
+        property_value = 0
 
     else:
         property_value = state.state.upper()
@@ -442,7 +463,7 @@ async def discovery_handler(hass, request):
                 description=ATTR_DESCRIPTION,
                 manufacturer_name=ATTR_MANUFACTURER,
                 display_categories=[state.attributes.get(
-                    ATTR_ALEXA_DISPLAY, get_display(domain))],
+                    ATTR_ALEXA_DISPLAY, get_display(state.domain))],
                 capabilities=capabilities)
 
     return alexa_response.get()
@@ -480,6 +501,16 @@ def get_service(interface, name, payload, state):
         data = {"entity_id": state.entity_id,
                 "brightness_pct": payload["brightness"]}
 
+    elif interface == "Alexa.ColorController" and name == "SetColor":
+        service = "turn_on"
+        data = {"entity_id": state.entity_id,
+                "hs_color": [payload["color"]["hue"], 100 * payload["color"]["saturation"]]}
+
+    elif interface == "Alexa.ColorTemperatureController" and name == "SetColorTemperature":
+        service = "turn_on"
+        data = {"entity_id": state.entity_id,
+                "kelvin": payload["colorTemperatureInKelvin"]}
+
     elif interface == "Alexa.ThermostatController" and name == "AdjustTargetTemperature":
         service = "set_temperature"
         data = {"entity_id": state.entity_id}
@@ -487,11 +518,10 @@ def get_service(interface, name, payload, state):
             "target_temp_high") + payload["targetSetpointDelta"]["value"]
         data["target_temp_low"] = state.attributes.get(
             "target_temp_low") + payload["targetSetpointDelta"]["value"]
-    
+
     else:
         raise Exception(
-            f"Service not yet implemented for Interface: {interface}")
-
+            f"Service not yet implemented for Interface: {interface}; name: {name}")
 
     return service, data
 
@@ -535,7 +565,7 @@ def get_futurevalue(name, service, data, state):
         raise Exception(
             f"Future value not yet implemented for name: {name}; service: {service}")
 
-    return property_value    
+    return property_value
 
 
 async def service_handler(hass, request):
@@ -589,16 +619,18 @@ async def report_handler(hass, request):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+    interfaces = get_interfaces(
+        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))
+    interfaces.remove("Alexa")
+    for interface in interfaces:
         instance = get_instance(interface)
 
-        if interface != "Alexa":
-            for prop in get_properties(interface):
-                alexa_response.add_context_property(
-                    namespace=interface,
-                    instance=instance,
-                    name=prop["name"],
-                    value=get_propertyvalue(prop["name"], state))
+        for prop in get_properties(interface):
+            alexa_response.add_context_property(
+                namespace=interface,
+                instance=instance,
+                name=prop["name"],
+                value=get_propertyvalue(prop["name"], state))
 
     return alexa_response.get()
 
@@ -607,27 +639,28 @@ async def change_handler(hass, entity_id):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
+    interfaces = get_interfaces(
+        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))
+    interfaces.remove("Alexa")
+    for interface in interfaces:
         instance = get_instance(interface)
 
-        if interface != "Alexa":
+        props = get_properties(interface)
+        if len(prop) > 0:
+            alexa_response = AlexaResponse(namespace="Alexa",
+                                           name="ChangeReport",
+                                           endpoint_id=entity_id)
+            for prop in props:
+                alexa_response.add_payload_property(namespace=interface,
+                                                    instance=instance,
+                                                    name=prop["name"],
+                                                    value=get_propertyvalue(prop["name"], state))
 
-            props = get_properties(interface)
-            if len(prop) > 0:
-                alexa_response = AlexaResponse(namespace="Alexa",
-                                            name="ChangeReport",
-                                            endpoint_id=entity_id)
-                for prop in props:
-                    alexa_response.add_payload_property(namespace=interface,
-                                                        instance=instance,
-                                                        name=prop["name"],
-                                                        value=get_propertyvalue(prop["name"], state))
-
-            else:
-                alexa_response = AlexaResponse(namespace="Alexa.DoorbellEventSource",
-                                               name="DoorbellPress",
-                                               endpoint_id=entity_id)
-                alexa_response.add_payload_timestamp()
+        else:
+            alexa_response = AlexaResponse(namespace="Alexa.DoorbellEventSource",
+                                           name="DoorbellPress",
+                                           endpoint_id=entity_id)
+            alexa_response.add_payload_timestamp()
 
     return alexa_response.get()
 
