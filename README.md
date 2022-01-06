@@ -5,10 +5,10 @@ This is a Home-Assistant custom component to be used together with an Alexa Smar
 Why not?, learning main reason
 
 ## Setup
-Alexa SmartHome Skill
-AWS Lambda
-AWS IoT GreenGrass core
-This custom component
+Alexa SmartHome Skill</br>
+AWS Lambda</br>
+AWS IoT GreenGrass core</br>
+This custom component</br>
 
 ## Configuration
 ```
@@ -27,6 +27,21 @@ alexa_interface: Alexa.ModeController
 alexa_display: GARAGE_DOOR
 ```
 
+## Supported Alexa interfaces
+Alexa.ContactSensor</br>
+Alexa.MotionSensor</br>
+Alexa.TemperatureSensor</br>
+Alexa.ThermostatController</br>
+Alexa.PowerController</br>
+Alexa.BrightnessController</br>
+Alexa.ColorController</br>
+Alexa.ColorTemperatureController</br>
+Alexa.ModeController</br>
+Alexa.RangeController</br>
+Alexa.EventDetectionSensor</br>
+Alexa.DoorbellEventSource</br>
+
+reference: https://developer.amazon.com/en-US/docs/alexa/device-apis/list-of-interfaces.html
 
 ## License
 alexa_response.py
