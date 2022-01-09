@@ -8,7 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import (
     CONF_ENTITY_ID, CONF_ACCESS_TOKEN, CONF_STATE, CONF_URL,
     MATCH_ALL, CONF_CLIENT_ID, CONF_CLIENT_SECRET,
-    ATTR_FRIENDLY_NAME)
+    ATTR_DEVICE_CLASS, ATTR_FRIENDLY_NAME)
 from .alexa_response import AlexaResponse
 
 COMPONENT_DOMAIN = "alexa_gateway"
@@ -119,10 +119,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-def get_interfaces(domain, override):
+def get_interfaces(domain, attributes):
     interfaces = []
+    device_class = attributes.get(ATTR_DEVICE_CLASS)
+    override_interface = attributes.get(ATTR_ALEXA_INTERFACE)
 
-    if not override:
+    if not override_interface:
         if domain in ["light"]:
             interfaces.append("Alexa.PowerController")
             interfaces.append("Alexa.BrightnessController")
@@ -130,55 +132,75 @@ def get_interfaces(domain, override):
             interfaces.append("Alexa.ColorTemperatureController")
             interfaces.append("Alexa")
 
-        if domain in ["switch", "input_boolean"]:
+        elif domain in ["switch", "input_boolean"]:
             interfaces.append("Alexa.PowerController")
             interfaces.append("Alexa")
 
-        if domain in ["script"]:
+        elif domain in ["script"]:
             interfaces.append("Alexa.PowerController")
             interfaces.append("Alexa")
 
-        if domain in ["climate"]:
+        elif domain in ["climate"]:
             interfaces.append("Alexa.TemperatureSensor")
             interfaces.append("Alexa.ThermostatController")
             interfaces.append("Alexa")
 
-        if domain in ["sensor", "binary_sensor"]:
+        elif domain in ["sensor", "binary_sensor"]:
             interfaces.append("Alexa.ContactSensor")
             interfaces.append("Alexa")
 
-        if domain in ["cover"]:
+        elif domain in ["cover"] and device_class in ["garage", "door", "gate"]:
             interfaces.append("Alexa.ModeController")
             interfaces.append("Alexa")
 
-        if domain in ["counter"]:
+        elif domain in ["cover"] and device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
             interfaces.append("Alexa.RangeController")
             interfaces.append("Alexa")
 
-    elif override == "Alexa.DoorbellEventSource":
+        elif domain in ["counter"]:
+            interfaces.append("Alexa.RangeController")
+            interfaces.append("Alexa")
+
+    elif override_interface == "Alexa.DoorbellEventSource":
         interfaces.append("Alexa.DoorbellEventSource")
 
-    elif override != "None":
-        interfaces.append(override)
+    elif override_interface != "None":
+        interfaces.append(override_interface)
         interfaces.append("Alexa")
 
     return interfaces
 
 
-def get_instance(interface):
-    instance = None
+def get_instance(interface, attributes):
+    device_class = attributes.get(ATTR_DEVICE_CLASS)
 
-    if interface == "Alexa.ModeController":
-        instance = "GarageDoor.Position"
+    if device_class in ["garage", "door", "gate"]:
+        return  "GarageDoor.Position"
 
-    if interface == "Alexa.RangeController":
-        instance = "Counter.Number"
+    elif device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
+        return "Blind.Lift"
 
-    return instance
+    elif interface == "Alexa.RangeController":
+        return "Counter.Number"
+
+    else:
+        return None
+
+def get_asset_id(attributes):
+    device_class = attributes.get(ATTR_DEVICE_CLASS)
+    if device_class in ["garage", "door", "gate"]:
+        return "Alexa.Setting.Mode"
+        
+    elif device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
+        return "Alexa.Setting.Opening"
+
+    else:
+        return None
 
 
-def get_capability(alexa_response, interface):
-
+def get_capability(alexa_response, interface, attributes):
+    device_class = attributes.get(ATTR_DEVICE_CLASS)
+    
     if interface == "Alexa":
         capability = alexa_response.create_payload_endpoint_capability()
 
@@ -216,10 +238,81 @@ def get_capability(alexa_response, interface):
             retrievable=False,
             proactively_reported=True)
 
+    elif interface == "Alexa.RangeController" and device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
+        capability = alexa_response.create_payload_endpoint_capability(
+            interface=interface,
+            instance=get_instance(interface, attributes),
+            supported=get_properties(interface),
+            retrievable=True,
+            proactively_reported=True,
+            capability_resources={"friendlyNames": [
+                {"@type": "asset", "value": {"assetId": get_asset_id(attributes)}}]},
+            configuration_range={"minimumValue": 0, "maximumValue": 100, "precision": 1},
+            unit_of_measure="Alexa.Unit.Percent",
+            semantics_actions=[
+                  {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Close"],
+                    "directive": {
+                      "name": "SetRangeValue",
+                      "payload": {
+                        "rangeValue": 0
+                      }
+                    }
+                  },
+                  {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Open"],
+                    "directive": {
+                      "name": "SetRangeValue",
+                      "payload": {
+                        "rangeValue": 100
+                      }
+                    }
+                  },
+                  {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Lower"],
+                    "directive": {
+                      "name": "AdjustRangeValue",
+                      "payload": {
+                        "rangeValueDelta" : -10,
+                        "rangeValueDeltaDefault" : False
+                      }
+                    }
+                  },
+                  {
+                    "@type": "ActionsToDirective",
+                    "actions": ["Alexa.Actions.Raise"],
+                    "directive": {
+                      "name": "AdjustRangeValue",
+                      "payload": {
+                        "rangeValueDelta" : 10,
+                        "rangeValueDeltaDefault" : False
+                      }
+                    }
+                  }
+                ],
+            semantics_states=[
+                  {
+                    "@type": "StatesToValue",
+                    "states": ["Alexa.States.Closed"],
+                    "value": 0
+                  },
+                  {
+                    "@type": "StatesToRange",
+                    "states": ["Alexa.States.Open"],
+                    "range": {
+                      "minimumValue": 1,
+                      "maximumValue": 100
+                    }
+                  }  
+                ])
+
     elif interface == "Alexa.RangeController":
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
-            instance=get_instance(interface),
+            instance=get_instance(interface, attributes),
             supported=get_properties(interface),
             retrievable=True,
             proactively_reported=True,
@@ -227,15 +320,15 @@ def get_capability(alexa_response, interface):
                 {"@type": "text", "value": {"text": "number", "locale": "en-US"}}]},
             configuration_range={"minimumValue": 0, "maximumValue": 100, "precision": 1})
 
-    elif interface == "Alexa.ModeController":
+    elif interface == "Alexa.ModeController" and device_class in ["garage", "door", "gate"]:
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
-            instance=get_instance(interface),
+            instance=get_instance(interface, attributes),
             supported=get_properties(interface),
             retrievable=True,
             proactively_reported=True,
             capability_resources={"friendlyNames": [
-                {"@type": "asset", "value": {"assetId": "Alexa.Setting.Mode"}}]},
+                {"@type": "asset", "value": {"assetId": get_asset_id(attributes)}}]},
             configuration_modes=[
                 {
                     "value": "Position.Up",
@@ -452,9 +545,10 @@ async def discovery_handler(hass, request):
     for entity_id in entities:
         state = hass.states.get(entity_id)
 
+        display_category = state.attributes.get(ATTR_ALEXA_DISPLAY, get_display(state.domain))
         capabilities = []
-        for interface in get_interfaces(state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE)):
-            capabilities.append(get_capability(alexa_response, interface))
+        for interface in get_interfaces(state.domain, state.attributes):
+            capabilities.append(get_capability(alexa_response, interface, state.attributes))
 
         if len(capabilities) > 0:
             alexa_response.add_payload_endpoint(
@@ -462,8 +556,7 @@ async def discovery_handler(hass, request):
                 friendly_name=state.attributes.get(ATTR_FRIENDLY_NAME),
                 description=ATTR_DESCRIPTION,
                 manufacturer_name=ATTR_MANUFACTURER,
-                display_categories=[state.attributes.get(
-                    ATTR_ALEXA_DISPLAY, get_display(state.domain))],
+                display_categories=[display_category],
                 capabilities=capabilities)
 
     return alexa_response.get()
@@ -591,7 +684,7 @@ async def service_handler(hass, request):
                                    scope_token=scope_token,
                                    endpoint_id=entity_id)
 
-    instance = get_instance(interface)
+    instance = get_instance(interface, state.attributes)
 
     # TO-DO: Dont use future value
     for prop in get_properties(interface):
@@ -619,11 +712,10 @@ async def report_handler(hass, request):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    interfaces = get_interfaces(
-        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))
+    interfaces = get_interfaces(state.domain, state.attributes)
     interfaces.remove("Alexa")
     for interface in interfaces:
-        instance = get_instance(interface)
+        instance = get_instance(interface, state.attributes)
 
         for prop in get_properties(interface):
             alexa_response.add_context_property(
@@ -639,11 +731,10 @@ async def change_handler(hass, entity_id):
     # Retrieve HASS state
     state = hass.states.get(entity_id)
 
-    interfaces = get_interfaces(
-        state.domain, state.attributes.get(ATTR_ALEXA_INTERFACE))
+    interfaces = get_interfaces(state.domain, state.attributes)
     interfaces.remove("Alexa")
     for interface in interfaces:
-        instance = get_instance(interface)
+        instance = get_instance(interface, state.attributes)
 
         props = get_properties(interface)
         if len(prop) > 0:

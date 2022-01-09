@@ -134,6 +134,7 @@ class AlexaResponse:
             capability["configuration"] = {}
             capability["configuration"]["supportedRange"] = configuration_range
             capability["configuration"]["presets"] = kwargs.get("presets", [])
+            capability["configuration"]["unitOfMeasure"] = kwargs.get("unit_of_measure", None)
 
         configuration_modes = kwargs.get("configuration_modes", None)
         if configuration_modes:
