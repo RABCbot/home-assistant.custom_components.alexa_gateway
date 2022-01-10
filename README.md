@@ -1,4 +1,4 @@
-# Alexa Gateway
+# custom_components/alexa_gateway
 This is a Home-Assistant custom component to be used together with an Alexa SmartHome skill
 
 ## Why?
@@ -21,10 +21,11 @@ alexa_gateway:
 
 ## Customize
 It is possible to override the Alexa interface and Alexa display values</br>
-For example, for an entity that controls your garage door, add these attributes in your customize section
+For example, for an entity you can make it as a Doorbell event
 ```
-alexa_interface: Alexa.ModeController
-alexa_display: GARAGE_DOOR
+script.doorbell:
+  alexa_interface: Alexa.DoorbellEventSource
+  alexa_display: DOORBELL
 ```
 
 ## Supported Alexa interfaces
