@@ -36,8 +36,8 @@ Alexa.PowerController</br>
 Alexa.BrightnessController</br>
 Alexa.ColorController</br>
 Alexa.ColorTemperatureController</br>
-Alexa.ModeController</br>
-Alexa.RangeController</br>
+Alexa.ModeController (garage door)</br>
+Alexa.RangeController (generic counter and blinds)</br>
 Alexa.EventDetectionSensor</br>
 Alexa.DoorbellEventSource</br>
 
