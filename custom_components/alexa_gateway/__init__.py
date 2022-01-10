@@ -530,7 +530,10 @@ def get_propertyvalue(name, state):
         else:
             property_value = "INVALID"
 
-    elif name == "rangeValue":
+    elif name == "rangeValue" and state.domain == "cover":
+        property_value = state.attributes.get("current_position")
+
+    elif name == "rangeValue" and state.domain != "cover":
         property_value = int(state.state)
 
     elif name == "color":
