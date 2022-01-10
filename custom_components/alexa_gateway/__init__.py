@@ -239,6 +239,7 @@ def get_capability(alexa_response, interface, attributes):
             proactively_reported=True)
 
     elif interface == "Alexa.RangeController" and device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
+        # TO-DO: Set "rangeValueDelta" from the state attributes step
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             instance=get_instance(interface, attributes),
@@ -421,7 +422,9 @@ def get_capability(alexa_response, interface, attributes):
     return capability
 
 
-def get_display(domain):
+def get_display(domain, attributes):
+    device_class = attributes.get(ATTR_DEVICE_CLASS)
+
     if domain == "light":
         return "LIGHT"
 
@@ -430,6 +433,18 @@ def get_display(domain):
 
     elif domain in ["climate"]:
         return "THERMOSTAT"
+
+    elif domain in ["camera"]:
+        return "CAMERA"
+
+    elif device_class in ["garage"]:
+        return "GARAGE_DOOR"
+
+    elif device_class in ["door", "gate"]:
+        return "DOOR"
+        
+    elif device_class in ["awning", "blind", "curtain", "shade", "shutter", "window"]:
+        return "INTERIOR_BLIND"
 
     else:
         return "OTHER"
@@ -545,7 +560,7 @@ async def discovery_handler(hass, request):
     for entity_id in entities:
         state = hass.states.get(entity_id)
 
-        display_category = state.attributes.get(ATTR_ALEXA_DISPLAY, get_display(state.domain))
+        display_category = state.attributes.get(ATTR_ALEXA_DISPLAY, get_display(state.domain, state.attributes))
         capabilities = []
         for interface in get_interfaces(state.domain, state.attributes):
             capabilities.append(get_capability(alexa_response, interface, state.attributes))
@@ -570,6 +585,14 @@ def get_service(interface, name, payload, state):
         else:
             service = "close_cover"
         data = {"entity_id": state.entity_id}
+
+    elif interface == "Alexa.RangeController" and name == "AdjustRangeValue" and state.domain == "cover":
+        service = "set_cover_position"
+        data = {"entity_id": state.entity_id, "position": state.attributes.get("current_position") + payload["rangeValueDelta"]}
+
+    elif interface == "Alexa.RangeController" and name == "SetRangeValue" and state.domain == "cover":
+        service = "set_cover_position"
+        data = {"entity_id": state.entity_id, "position": payload["rangeValue"]}
 
     elif interface == "Alexa.RangeController" and name == "AdjustRangeValue":
         if payload["rangeValueDelta"] > 0:
@@ -636,6 +659,9 @@ def get_futurevalue(name, service, data, state):
     elif service == "configure":
         return data["value"]
 
+    elif service == "set_cover_position":
+        return data["position"]
+
     elif service == "turn_off":
         return "OFF"
 
@@ -658,7 +684,6 @@ def get_futurevalue(name, service, data, state):
         raise Exception(
             f"Future value not yet implemented for name: {name}; service: {service}")
 
-    return property_value
 
 
 async def service_handler(hass, request):
