@@ -461,7 +461,8 @@ def get_properties(interface):
         return [{"name": "temperature"}]
 
     elif interface == "Alexa.ThermostatController":
-        return [{"name": "thermostatMode"},
+        return [{"name": "targetSetpoint"},
+                {"name": "thermostatMode"},
                 {"name": "lowerSetpoint"},
                 {"name": "upperSetpoint"}]
 
@@ -511,8 +512,9 @@ def get_propertyvalue(name, state):
         property_value = {"value": state.attributes.get(
             "current_temperature"), "scale": "FAHRENHEIT"}
 
-    elif name == "thermostatMode" and state.domain == "climate":
-        property_value = {"value": state.state}
+    elif name == "targetSetpoint" and state.domain == "climate":
+        property_value = {"value": state.attributes.get(
+            "current_temperature"), "scale": "FAHRENHEIT"}
 
     elif name == "lowerSetpoint" and state.domain == "climate":
         property_value = {"value": state.attributes.get(
@@ -521,6 +523,11 @@ def get_propertyvalue(name, state):
     elif name == "upperSetpoint" and state.domain == "climate":
         property_value = {"value": state.attributes.get(
             "target_temp_high"), "scale": "FAHRENHEIT"}
+
+    elif name == "thermostatMode" and state.domain == "climate":
+        property_value = state.state.upper()
+        if property_value == "HEAT_COOL":
+            property_value = "AUTO"
 
     elif name == "mode":
         if state.state.lower() == "open":
@@ -638,6 +645,15 @@ def get_service(interface, name, payload, state):
         data["target_temp_low"] = state.attributes.get(
             "target_temp_low") + payload["targetSetpointDelta"]["value"]
 
+    elif interface == "Alexa.ThermostatController" and name == "SetTargetTemperature":
+        service = "set_temperature"
+        data = {"entity_id": state.entity_id}
+        if "upperSetpoint" in payload: data["target_temp_high"] = payload["upperSetpoint"]["value"]
+        if "lowerSetpoint" in payload: data["target_temp_low"] = payload["lowerSetpoint"]["value"]
+        if "targetSetpoint" in payload: 
+            data["target_temp_high"] = payload["targetSetpoint"]["value"] + 4
+            data["target_temp_low"] = payload["targetSetpoint"]["value"] - 4
+
     else:
         raise Exception(
             f"Service not yet implemented for Interface: {interface}; name: {name}")
@@ -683,6 +699,9 @@ def get_futurevalue(name, service, data, state):
     elif name == "upperSetpoint":
         return {"value": data["target_temp_high"], "scale": "FAHRENHEIT"}
 
+    elif name == "targetSetpoint":
+        return {"value": state.attributes.get("current_temperature"), "scale": "FAHRENHEIT"}
+        
     else:
         raise Exception(
             f"Future value not yet implemented for name: {name}; service: {service}")
