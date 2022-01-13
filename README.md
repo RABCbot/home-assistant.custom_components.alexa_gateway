@@ -6,9 +6,13 @@ Why not?, learning main reason
 
 ## Setup
 Alexa SmartHome Skill</br>
+Alexa Account Linking</br>
 AWS Lambda</br>
 AWS IoT GreenGrass core</br>
 This custom component</br>
+
+## Account Linking
+reference:  https://developer.amazon.com/blogs/post/Tx3CX1ETRZZ2NPC/Alexa-Account-Linking-5-Steps-to-Seamlessly-Link-Your-Alexa-Skill-with-Login-wit
 
 ## Configuration
 ```
