@@ -667,7 +667,7 @@ def get_futurevalue(name, service, data, state):
         return "Position.Up"
 
     elif service == "close_cover":
-        return "Position.Close"
+        return "Position.Down"
 
     elif service == "increment":
         return int(state.state) + 1
@@ -760,7 +760,7 @@ async def report_handler(hass, request):
     state = hass.states.get(entity_id)
 
     interfaces = get_interfaces(state.domain, state.attributes)
-    interfaces.remove("Alexa")
+    if "Alexa" in interfaces: interfaces.remove("Alexa")
     for interface in interfaces:
         instance = get_instance(interface, state.attributes)
 
@@ -779,7 +779,7 @@ async def change_handler(hass, entity_id):
     state = hass.states.get(entity_id)
 
     interfaces = get_interfaces(state.domain, state.attributes)
-    interfaces.remove("Alexa")
+    if "Alexa" in interfaces: interfaces.remove("Alexa")
     for interface in interfaces:
         instance = get_instance(interface, state.attributes)
 
