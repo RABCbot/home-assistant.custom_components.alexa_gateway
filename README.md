@@ -15,7 +15,7 @@ This custom component</br>
 The custom component register two services:</br>
 ### process_request
 To be called from your lambda running the local Greengrass IoT core
-### report_Change
+### report_change
 To be called from an Automation in Home-assistant to send your entity status change to the Alexa Event Gateway
 reference: https://developer.amazon.com/en-US/docs/alexa/smarthome/send-events-to-the-alexa-event-gateway.html
 
