@@ -15,7 +15,7 @@ AWS IoT GreenGrass core</br>
 This custom component</br>
 
 ## Services
-The custom component registers two services:</br>
+The custom component registers two services to Home Assistant:</br>
 ### process_request
 To be called from your lambda running in your local Greengrass IoT core
 ### report_change
