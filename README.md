@@ -23,6 +23,7 @@ The custom component registers two services to Home Assistant:</br>
 Amazon blog post about [Login with Amazon](https://developer.amazon.com/blogs/post/Tx3CX1ETRZZ2NPC/Alexa-Account-Linking-5-Steps-to-Seamlessly-Link-Your-Alexa-Skill-with-Login-wit)
 
 ## Configuration
+To enable this custom component add these lines to your configuration.yaml file:
 ```
 alexa_gateway:
   url: https://api.amazonalexa.com/v3/events
