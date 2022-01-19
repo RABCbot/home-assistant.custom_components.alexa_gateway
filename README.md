@@ -1,10 +1,13 @@
 # custom_components/alexa_gateway
-This is a Home-Assistant custom component to be used together with an Alexa SmartHome skill
+This custom component allows accesing your [Home Assistant](https://www.home-assistant.io) entities from an Alexa SmartHome Skill
 
-## Why?
-Why not?, learning main reason
+## Goals
+1. Replace the emulated_hue integration</br>
+2. Avoid port forwarding to expose Home Assistant to the external Internet</br>
+3. Support for all my entities (lights, switches, garage door, scripts and sensors)</br>
 
-## Setup
+## Ingredients
+Alexa</br>
 Alexa SmartHome Skill</br>
 Alexa Account Linking</br>
 AWS Lambda</br>
@@ -12,7 +15,7 @@ AWS IoT GreenGrass core</br>
 This custom component</br>
 
 ## Services
-The custom component register two services:</br>
+The custom component registers two services:</br>
 ### process_request
 To be called from your lambda running in your local Greengrass IoT core
 ### report_change
