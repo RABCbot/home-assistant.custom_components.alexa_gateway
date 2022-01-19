@@ -1,5 +1,5 @@
 # custom_components/alexa_gateway
-This custom component allows accesing your [Home Assistant](https://www.home-assistant.io) entities from an Alexa SmartHome Skill
+This custom component allows accesing your [Home Assistant](https://www.home-assistant.io) entities from an Alexa SmartHome Skill. 
 
 ## Goals
 1. Replace the emulated_hue integration</br>
