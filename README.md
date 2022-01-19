@@ -4,7 +4,7 @@ This custom component allows accesing your [Home Assistant](https://www.home-ass
 ## Goals
 1. Replace the emulated_hue integration</br>
 2. Avoid port forwarding to expose Home Assistant to the external Internet</br>
-3. Support for all my entities (lights, switches, garage door, scripts and sensors)</br>
+3. Support common entities (lights, switches, garage door, scripts and sensors)</br>
 
 ## Ingredients
 Alexa</br>
