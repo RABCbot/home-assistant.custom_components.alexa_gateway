@@ -125,6 +125,10 @@ def get_interfaces(domain, attributes):
     override_interface = attributes.get(ATTR_ALEXA_INTERFACE)
 
     if not override_interface:
+        if domain in ["lock"]:
+            interfaces.append("Alexa.LockController")
+            interfaces.append("Alexa")
+
         if domain in ["light"]:
             interfaces.append("Alexa.PowerController")
             interfaces.append("Alexa.BrightnessController")
@@ -209,7 +213,7 @@ def get_capability(alexa_response, interface, attributes):
             interface=interface,
             proactively_reported=True)
 
-    elif interface in ["Alexa.BrightnessController", "Alexa.PowerController", "Alexa.TemperatureSensor", "Alexa.ColorController", "Alexa.ColorTemperatureController"]:
+    elif interface in ["Alexa.LockController", "Alexa.BrightnessController", "Alexa.PowerController", "Alexa.TemperatureSensor", "Alexa.ColorController", "Alexa.ColorTemperatureController"]:
         capability = alexa_response.create_payload_endpoint_capability(
             interface=interface,
             supported=get_properties(interface),
@@ -425,8 +429,11 @@ def get_capability(alexa_response, interface, attributes):
 def get_display(domain, attributes):
     device_class = attributes.get(ATTR_DEVICE_CLASS)
 
-    if domain == "light":
+    if domain in ["light"]:
         return "LIGHT"
+
+    elif domain in ["lock"]:
+        return "SMARTLOCK"
 
     elif domain in ["script"]:
         return "ACTIVITY_TRIGGER"
@@ -489,6 +496,9 @@ def get_properties(interface):
 
     elif interface == "Alexa.RangeController":
         return [{"name": "rangeValue"}]
+
+    elif interface == "Alexa.LockController":
+        return [{"name": "lockState"}]
 
     else:
         raise Exception(
@@ -615,6 +625,10 @@ def get_service(interface, name, payload, state):
         service = "configure"
         data = {"entity_id": state.entity_id, "value": payload["rangeValue"]}
 
+    elif interface == "Alexa.LockController":
+        service = name.lower()
+        data = {"entity_id": state.entity_id}
+
     elif interface == "Alexa.PowerController":
         if name == "TurnOff":
             service = "turn_off"
@@ -686,6 +700,12 @@ def get_futurevalue(name, service, data, state):
 
     elif service == "turn_on":
         return "ON"
+
+    elif service == "lock":
+        return "LOCKED"
+
+    elif service == "unlock":
+        return "UNLOCKED"
 
     elif "brightness_pct" in data:
         return data["brightness_pct"]
