@@ -7,12 +7,12 @@ This custom component integrates [Home Assistant](https://www.home-assistant.io)
 3. Support common entities (lights, switches, garage door, scripts and sensors)</br>
 
 ## Ingredients
-Alexa</br>
-Alexa SmartHome Skill</br>
-Alexa Account Linking</br>
-AWS Lambda</br>
-AWS IoT GreenGrass core</br>
-This custom component</br>
+- Alexa
+- Alexa SmartHome Skill
+- Alexa Account Linking
+- AWS Lambda
+- AWS IoT GreenGrass core
+- This custom component
 
 ## Services
 The custom component registers two services to Home Assistant:</br>
