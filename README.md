@@ -27,7 +27,7 @@ Follow [repo](https://github.com/RABCbot/aws-iot-greengrass-rpizero) instruction
 NOTE: Instructions might be outdated.
 
 ## Configuration
-To enable this custom component add these lines to your configuration.yaml file:
+To enable this custom component add these lines to your Home-Assistant configuration.yaml file:
 ```
 alexa_gateway:
   url: https://api.amazonalexa.com/v3/events
