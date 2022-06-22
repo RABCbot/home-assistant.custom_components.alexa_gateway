@@ -22,6 +22,10 @@ The custom component registers two services to Home Assistant:</br>
 ## Account Linking
 Amazon blog post about [Login with Amazon](https://developer.amazon.com/blogs/post/Tx3CX1ETRZZ2NPC/Alexa-Account-Linking-5-Steps-to-Seamlessly-Link-Your-Alexa-Skill-with-Login-wit)
 
+## AWS Greengrass IoT
+Follow [repo](https://github.com/RABCbot/aws-iot-greengrass-rpizero) instructions to get Greengrass IoT running.
+NOTE: Instructions might be outdated.
+
 ## Configuration
 To enable this custom component add these lines to your configuration.yaml file:
 ```
@@ -47,6 +51,7 @@ Alexa.MotionSensor</br>
 Alexa.TemperatureSensor</br>
 Alexa.ThermostatController</br>
 Alexa.PowerController</br>
+Alexa.LockController</br>
 Alexa.BrightnessController</br>
 Alexa.ColorController</br>
 Alexa.ColorTemperatureController</br>
