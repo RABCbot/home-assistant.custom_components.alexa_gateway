@@ -489,7 +489,7 @@ def get_properties(interface):
         return [{"name": "humanPresenceDetectionState"}]
 
     elif interface == "Alexa.DoorbellEventSource":
-        return None
+        return []
 
     elif interface == "Alexa.ModeController":
         return [{"name": "mode"}]
@@ -804,7 +804,7 @@ async def change_handler(hass, entity_id):
         instance = get_instance(interface, state.attributes)
 
         props = get_properties(interface)
-        if len(prop) > 0:
+        if len(props) > 0:
             alexa_response = AlexaResponse(namespace="Alexa",
                                            name="ChangeReport",
                                            endpoint_id=entity_id)
